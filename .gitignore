@@ -1,0 +1,49 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node modules
+node_modules/
+.npm/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+out/
+.next/ # Nếu sau này dùng Next.js
+.nuxt/ # Nếu sau này dùng Nuxt.js
+.vite/ # Thư mục cache của Vite
+coverage/
+*.tgz
+.DS_Store # macOS
+npm-debug.log* # Windows
+yarn-error.log* # Windows
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.bak
+*.orig
+.cache/
+.env # Biến môi trường, không nên commit!
+.env.local
+.env.*.local
+
+# Backend specific
+backend/node_modules/
+backend/.env
+
+# Frontend specific (Vite/React)
+frontend/node_modules/
+frontend/dist/ # Thư mục build của Vite trong frontend
