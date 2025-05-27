@@ -1,3 +1,4 @@
+// backend/controllers/authController.js
 const bcrypt = require("bcryptjs");
 const { pool } = require("../config/db");
 const generateToken = require("../utils/jwt");
@@ -7,9 +8,7 @@ const crypto = require("crypto");
 const registerUser = async (req, res) => {
   const { username, email, password } = req.body;
   if (!username || !email || !password) {
-    return res
-      .status(400)
-      .json({ message: "Vui lòng điền đầy đủ các trường." });
+    return res.status(400).json({ message: "Please fill in all fields." });
   }
   try {
     const [existingUser] = await pool.execute(
@@ -19,7 +18,7 @@ const registerUser = async (req, res) => {
     if (existingUser.length > 0) {
       return res
         .status(400)
-        .json({ message: "Email hoặc tên người dùng đã tồn tại." });
+        .json({ message: "Email or username already exists." });
     }
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -28,13 +27,13 @@ const registerUser = async (req, res) => {
       [username, email, hashedPassword]
     );
     res.status(201).json({
-      message: "Đăng ký thành công",
+      message: "Registration successful. Please login.", // Changed message
       user: { id: result.insertId, username, email },
       token: generateToken(result.insertId),
     });
   } catch (error) {
-    console.error("Lỗi đăng ký:", error.message);
-    res.status(500).json({ message: "Đăng ký thất bại. Vui lòng thử lại." });
+    console.error("Registration error:", error.message);
+    res.status(500).json({ message: "Registration failed. Please try again." });
   }
 };
 
@@ -43,48 +42,47 @@ const loginUser = async (req, res) => {
   if (!email || !password) {
     return res
       .status(400)
-      .json({ message: "Vui lòng điền đầy đủ email và mật khẩu." });
+      .json({ message: "Please provide email and password." });
   }
   try {
     const [users] = await pool.execute("SELECT * FROM users WHERE email = ?", [
       email,
     ]);
     if (users.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Thông tin đăng nhập không hợp lệ." });
+      return res.status(400).json({ message: "Invalid credentials." });
     }
     const user = users[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res
-        .status(400)
-        .json({ message: "Thông tin đăng nhập không hợp lệ." });
+      return res.status(400).json({ message: "Invalid credentials." });
     }
     res.status(200).json({
-      message: "Đăng nhập thành công",
+      message: "Login successful",
       user: { id: user.id, username: user.username, email: user.email },
       token: generateToken(user.id),
     });
   } catch (error) {
-    console.error("Lỗi đăng nhập:", error.message);
-    res.status(500).json({ message: "Đăng nhập thất bại. Vui lòng thử lại." });
+    console.error("Login error:", error.message);
+    res.status(500).json({ message: "Login failed. Please try again." });
   }
 };
 
 const forgotPassword = async (req, res) => {
   const { email } = req.body;
   if (!email) {
-    return res.status(400).json({ message: "Vui lòng nhập email." });
+    return res
+      .status(400)
+      .json({ message: "Please provide an email address." });
   }
   try {
     const [users] = await pool.execute("SELECT * FROM users WHERE email = ?", [
       email,
     ]);
     if (users.length === 0) {
+      // It's good practice not to reveal if an email exists or not for security reasons
       return res.status(200).json({
         message:
-          "Nếu email của bạn tồn tại, một liên kết đặt lại mật khẩu đã được gửi.",
+          "If your email exists in our system, a password reset link has been sent.",
       });
     }
     const user = users[0];
@@ -93,47 +91,62 @@ const forgotPassword = async (req, res) => {
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
-    const resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+    const resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 minutes
+
     await pool.execute(
       "UPDATE users SET reset_password_token = ?, reset_password_expire = ? WHERE id = ?",
       [resetPasswordToken, new Date(resetPasswordExpire), user.id]
     );
-    const resetUrl = `<span class="math-inline">\{process\.env\.CLIENT\_URL\}/\#/reset\-password/</span>{resetToken}`;
-    const message = `
-            <h1>Bạn đã yêu cầu đặt lại mật khẩu</h1>
-            <p>Vui lòng truy cập liên kết sau để đặt lại mật khẩu:</p>
-            <a href=<span class="math-inline">\{resetUrl\} clicktracking\=off\></span>{resetUrl}</a>
-            <p>Liên kết này sẽ hết hạn trong 15 phút.</p>
-        `;
+
+    // Ensure CLIENT_URL is set in your .env file, e.g., CLIENT_URL=http://localhost:5173
+    const resetUrl = `${
+      process.env.CLIENT_URL || "http://localhost:5173"
+    }/#/reset-password/${resetToken}`;
+
+    const emailMessage = `
+      <h1>You have requested a password reset</h1>
+      <p>Please go to the following link to reset your password:</p>
+      <a href="${resetUrl}" clicktracking=off>${resetUrl}</a>
+      <p>This link will expire in 15 minutes.</p>
+      <p>If you did not request this, please ignore this email.</p>
+    `;
     try {
       await sendEmail({
         email: user.email,
-        subject: "Đặt lại mật khẩu của bạn",
-        html: message,
+        subject: "Password Reset Request",
+        html: emailMessage,
       });
-      res.status(200).json({ message: "Email đặt lại mật khẩu đã được gửi." });
+      res.status(200).json({ message: "Password reset email sent." });
     } catch (err) {
       await pool.execute(
         "UPDATE users SET reset_password_token = NULL, reset_password_expire = NULL WHERE id = ?",
         [user.id]
       );
-      console.error("Lỗi gửi email:", err.message);
+      console.error("Error sending email:", err.message);
       res.status(500).json({
-        message: "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau.",
+        message: "Could not send password reset email. Please try again later.",
       });
     }
   } catch (error) {
-    console.error("Lỗi quên mật khẩu:", error.message);
-    res.status(500).json({ message: "Có lỗi xảy ra. Vui lòng thử lại." });
+    console.error("Forgot password error:", error.message);
+    res.status(500).json({ message: "An error occurred. Please try again." });
   }
 };
 
 const resetPassword = async (req, res) => {
   const { resetToken } = req.params;
   const { newPassword } = req.body;
+
   if (!newPassword) {
-    return res.status(400).json({ message: "Vui lòng nhập mật khẩu mới." });
+    return res.status(400).json({ message: "Please provide a new password." });
   }
+  if (newPassword.length < 6) {
+    // Example: Enforce minimum password length
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 6 characters long." });
+  }
+
   const hashedToken = crypto
     .createHash("sha256")
     .update(resetToken)
@@ -143,29 +156,35 @@ const resetPassword = async (req, res) => {
       "SELECT * FROM users WHERE reset_password_token = ? AND reset_password_expire > ?",
       [hashedToken, new Date(Date.now())]
     );
+
     if (users.length === 0) {
       return res
         .status(400)
-        .json({ message: "Token đặt lại không hợp lệ hoặc đã hết hạn." });
+        .json({ message: "Invalid or expired reset token." });
     }
     const user = users[0];
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
+
     await pool.execute(
       "UPDATE users SET password = ?, reset_password_token = NULL, reset_password_expire = NULL WHERE id = ?",
       [hashedPassword, user.id]
     );
-    res.status(200).json({ message: "Mật khẩu đã được đặt lại thành công." });
+    res.status(200).json({ message: "Password has been reset successfully." });
   } catch (error) {
-    console.error("Lỗi đặt lại mật khẩu:", error.message);
+    console.error("Reset password error:", error.message);
     res.status(500).json({
-      message: "Có lỗi xảy ra khi đặt lại mật khẩu. Vui lòng thử lại.",
+      message:
+        "An error occurred while resetting the password. Please try again.",
     });
   }
 };
 
 const getUserProfile = async (req, res) => {
-  res.status(200).json({ message: "Thông tin người dùng", user: req.user });
+  // req.user is set by the 'protect' middleware
+  res
+    .status(200)
+    .json({ message: "User profile fetched successfully.", user: req.user });
 };
 
 module.exports = {

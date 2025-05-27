@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_BASE_URL; // Lấy từ biến môi trường Vite
+const API_URL = import.meta.env.VITE_API_BASE_URL;
+console.log("VITE_API_BASE_URL from api.js:", API_URL);
 
 const register = async (username, email, password) => {
   const response = await axios.post(`${API_URL}/register`, {
